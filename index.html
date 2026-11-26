@@ -120,7 +120,7 @@ function msgOrc(o){const p=pac(o.pacienteId);const l=(o.itens||[]).map(i=>`• $
 function msgCobr(l){const p=pac(l.pacienteId);return `Olá, ${(p?.nome||"").split(" ")[0]}! Passando para lembrar do pagamento de ${brl(l.valor)} referente a "${l.desc}"${l.vencimento?`, com vencimento em ${fdata(l.vencimento)}`:""}. Se já pagou, desconsidere. Obrigado!${assin()}`}
 const btnWa=(tel,txt,rot="Enviar WhatsApp")=>tel?`<a class="btn wa sm" target="_blank" rel="noopener" href="${esc(waLink(tel,txt))}">${rot}</a>`:`<span class="pill warn">sem telefone</span>`;
 
-const MENU=[["inicio","Início"],["agenda","Agenda"],["pacientes","Pacientes"],["orcamentos","Orçamentos"],["financeiro","Financeiro"],["relatorio","Relatório"],["config","Ajustes"]];
+const MENU=[["inicio","Início"],["agenda","Agenda"],["pacientes","Pacientes"],["orcamentos","Orçamentos"],["financeiro","Financeiro"],["relatorio","Relatórios"],["config","Ajustes"]];
 function renderNav(){$("#nav").innerHTML=`<h1>${esc(cfg().nome||"Minha clínica")}<small>Controle odontológico</small></h1>`+
   MENU.map(([k,t])=>`<button data-act="ir" data-v="${k}" aria-current="${S.view===k||(S.view==="paciente"&&k==="pacientes")}">${t}</button>`).join("")+
   `<div class="sync">${S.erro?esc(S.erro):S.ok?"Dados salvos neste aparelho":"Conectando…"}</div>`}
@@ -417,7 +417,14 @@ ${rTab(["Resumo","Valor"],[["Total de entradas (recebido)",brl(d.te)],["Total de
 <h3>Saídas por categoria</h3>${rTab(["Categoria","Valor"],agr(d.sai,"categoria","Sem categoria"),[1])}
 <h3>Movimentação detalhada</h3>${rTab(["Data","Tipo","Descrição","Paciente","Forma","Valor"],d.pagos.map(l=>[fdata(l.data),l.tipo==="entrada"?"Entrada":"Saída",esc(l.desc),esc(l.pacienteId?nomePac(l.pacienteId):"—"),esc(l.forma||"—"),`<span class="${l.tipo==="entrada"?"pos":"neg"}">${l.tipo==="entrada"?"":"−"}${brl(l.valor)}</span>`]),[5])}
 <h3>Em aberto (vencimento até o fim do mês)</h3>${rTab(["Vencimento","Tipo","Descrição","Paciente","Valor"],d.abertos.map(l=>[fdata(l.vencimento||l.data),l.tipo==="entrada"?"A receber":"A pagar",esc(l.desc),esc(l.pacienteId?nomePac(l.pacienteId):"—"),brl(l.valor)]),[4])}</div>`}
-function vRelatorio(){return `<div class="bar"><div class="grow"><h2 style="margin:0">Relatório mensal</h2><p class="sub" style="margin:0">Para entregar ao contador</p></div><input type="month" id="relMes" value="${S.mes}" style="width:auto"><button class="primary" data-act="rel-print">Imprimir / salvar PDF</button><button data-act="rel-csv">Baixar planilha (CSV)</button></div><div class="card">${relHtml(S.mes)}</div>`}
+function vRelatorio(){
+  const ps=S.pacientes.slice().sort((a,b)=>a.nome.localeCompare(b.nome));
+  const ds=S.documentos.filter(d=>(d.data||"").startsWith(S.mes)).sort((a,b)=>b.data.localeCompare(a.data));
+  const emitir=ps.length?`<div class="form"><label>Paciente<select id="docPac">${ps.map(p=>`<option value="${p.id}">${esc(p.nome)}</option>`).join("")}</select></label><label>Documento<select id="docTipo"><option value="atestado">Atestado odontológico</option><option value="comparecimento">Declaração de comparecimento</option><option value="receita">Receita</option></select></label><div style="align-self:end"><button class="primary" data-act="doc-novo">Criar documento</button></div></div>`:`<div class="empty">Cadastre um paciente para emitir documentos.</div>`;
+  const lista=ds.length?`<div class="tbl"><table><thead><tr><th>Data</th><th>Paciente</th><th>Documento</th><th></th></tr></thead><tbody>${ds.map(d=>`<tr><td>${fdata(d.data)}</td><td>${esc(nomePac(d.pacienteId))}</td><td>${esc(TIPO_ROT[d.tipo]||"Documento")}</td><td class="r"><button class="sm" data-act="doc-ver" data-id="${d.id}">Ver / imprimir</button></td></tr>`).join("")}</tbody></table></div>`:`<p class="sub">Nenhum documento emitido em ${mesRot(S.mes)}.</p>`;
+  return `<div class="bar"><div class="grow"><h2 style="margin:0">Relatórios</h2><p class="sub" style="margin:0">Atestados, documentos e relatório para o contador</p></div><input type="month" id="relMes" value="${S.mes}" style="width:auto"></div>
+<div class="card" style="margin-bottom:16px"><h3>Emitir atestado ou documento</h3>${emitir}<h3 style="margin-top:18px">Documentos emitidos em ${mesRot(S.mes)}</h3>${lista}</div>
+<div class="card"><div class="bar"><h3 class="grow" style="margin:0">Relatório financeiro</h3><button class="primary sm" data-act="rel-print">Imprimir / salvar PDF</button><button class="sm" data-act="rel-csv">Baixar planilha (CSV)</button></div>${relHtml(S.mes)}</div>`}
 function relCsv(m){const d=relDados(m),q=v=>`"${String(v??"").replace(/"/g,'""')}"`,n=v=>String(Number(v||0).toFixed(2)).replace(".",",");
   const L=[["Data","Tipo","Descrição","Paciente","Categoria","Forma","Situação","Valor"].map(q).join(";")];
   d.pagos.concat(d.abertos).forEach(l=>L.push([fdata(l.status==="pago"?l.data:(l.vencimento||l.data)),l.tipo==="entrada"?"Entrada":"Saída",l.desc,l.pacienteId?nomePac(l.pacienteId):"",l.categoria||"",l.forma||"",l.status==="pago"?"Pago":"Em aberto",n(l.tipo==="entrada"?l.valor:-l.valor)].map(q).join(";")));
@@ -469,7 +476,9 @@ async function imgVer(id){const i=S.imagens.find(x=>x.id===id);if(!i)return;
 
 /* Eventos dos novos recursos */
 document.addEventListener("click",async e=>{const b=e.target.closest("[data-act]");if(!b)return;const a=b.dataset.act,d=b.dataset;
+  if((a==="doc-form"||a==="doc-ver")&&d.id){const x=S.documentos.find(z=>z.id===d.id);if(x)S.pacId=x.pacienteId}
   if(a==="doc-form")docForm(d.id,d.tipo);else if(a==="doc-ver")docVer(d.id);
+  else if(a==="doc-novo"){const pid=$("#docPac")&&$("#docPac").value;if(!pid){toast("Escolha o paciente");return}S.pacId=pid;docForm(null,$("#docTipo").value)}
   else if(a==="imprimir"){const x=S.documentos.find(z=>z.id===d.id);$("#print").innerHTML=docHtml(x);window.print()}
   else if(a==="img-form")imgForm();else if(a==="img-ver")imgVer(d.id);
   else if(a==="orc-parcelar"){const o=S.orcamentos.find(x=>x.id===d.id);if(o)lancForm(null,"entrada",o.pacienteId,{valor:totalOrc(o),desc:`Tratamento (orçamento de ${fdata(o.data)})`,status:"pendente",categoria:"Tratamento",parcelas:3,vencimento:addDias(hoje(),30)})}
@@ -489,7 +498,7 @@ document.addEventListener("change",async e=>{const t=e.target;
 document.addEventListener("input",e=>{if(e.target.name==="texto"&&e.target.form?.dataset.kind==="doc")e.target.dataset.auto="0"});
 document.addEventListener("submit",async e=>{const f=e.target,k=f.dataset.kind;if(!["cfg","doc","img"].includes(k))return;e.preventDefault();const v=fd(f);
   if(k==="cfg"){const r=await salvar("config","clinica",{nome:v.nome.trim(),dentista:v.dentista.trim(),cro:v.cro.trim(),endereco:v.endereco.trim(),tel:v.tel.trim(),cidade:v.cidade.trim()});if(r)toast("Dados salvos")}
-  else if(k==="doc"){const id=f.dataset.id||null;const r=await salvar("documentos",id,{pacienteId:S.pacId,tipo:v.tipo,data:v.data,dias:+v.dias||1,texto:v.texto});if(r)docVer(r)}
+  else if(k==="doc"){const id=f.dataset.id||null;const dono=id?(S.documentos.find(x=>x.id===id)||{}).pacienteId:null;const r=await salvar("documentos",id,{pacienteId:dono||S.pacId,tipo:v.tipo,data:v.data,dias:+v.dias||1,texto:v.texto});if(r)docVer(r)}
   else if(k==="img"){const files=[...f.elements.arq.files];if(!files.length)return;const btn=$("#btnImg");btn.disabled=true;let n=0;
     try{for(const file of files){btn.textContent=`Salvando ${++n} de ${files.length}…`;const thumb=await reduzir(file,360,.72),full=await reduzir(file,1800,.85),id=novoId();
       await db.blobPut(id,full);await salvar("imagens",id,{pacienteId:S.pacId,tipo:v.tipo,dente:v.dente,data:v.data||hoje(),legenda:v.legenda.trim(),thumb})}
